@@ -40,10 +40,30 @@ const registerUser = async (req, res) => {
         const salt = await bcrypt.genSalt(10); // the more no. round the more time it will take
         const hashedPassword = await bcrypt.hash(password, salt)
 
+        // Generate a unique patient ID
+        const generatePatientId = () => {
+            const prefix = "PAT";
+            const timestamp = Date.now().toString().slice(-6);
+            const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+            return `${prefix}${timestamp}${random}`;
+        };
+
+        // Ensure patientId is unique
+        let patientId;
+        let isUnique = false;
+        while (!isUnique) {
+            patientId = generatePatientId();
+            const existingUser = await userModel.findOne({ patientId });
+            if (!existingUser) {
+                isUnique = true;
+            }
+        }
+
         const userData = {
             name,
             email,
             password: hashedPassword,
+            patientId // Add the generated patientId
         }
 
         const newUser = new userModel(userData)

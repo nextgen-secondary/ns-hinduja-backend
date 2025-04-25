@@ -3,6 +3,8 @@ import mongoose from "mongoose";
 const bookingSchema = new mongoose.Schema({
   patientName: { type: String, required: true },
   doctorId: { type: String, required: true },
+  userId: { type: String, required: true },
+  patientId: { type: String, required: true }, // Add patientId field
   date: { type: String, required: true },
   time: { type: String, required: true },
   status: { 
