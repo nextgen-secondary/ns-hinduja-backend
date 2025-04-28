@@ -5,14 +5,26 @@ import Booking from "../models/bookingModel.js";
 export const createBooking = async (req, res) => {
   try {
     console.log('Received booking request:', req.body);
-    const { patientName, doctorId, date, time } = req.body;
+    // Extract patientId with fallback to empty string for validation to catch
+    const { patientName, doctorId, date, time, patientId = "" } = req.body;
+
+    // Log the booking data for debugging
+    console.log('Creating booking with data:', {
+      patientId,
+      patientName,
+      doctorId,
+      date,
+      time,
+      fullBody: req.body
+    });
 
     // Validate required fields
-    if (!patientName || !doctorId || !date || !time) {
-      console.log('Missing required fields:', { patientName, doctorId, date, time });
+    if (!patientId || !patientName || !doctorId || !date || !time) {
+      console.log('Missing required fields:', { patientName, doctorId, date, time, patientId});
       return res.status(400).json({ 
         message: 'All fields are required',
         missingFields: {
+          patientId: !patientId,
           patientName: !patientName,
           doctorId: !doctorId,
           date: !date,
@@ -21,8 +33,8 @@ export const createBooking = async (req, res) => {
       });
     }
 
-    // Check if slot is already booked
-    const existingBooking = await Booking.findOne({ 
+    const existingBooking = await Booking.findOne({
+      patientId, 
       doctorId, 
       date, 
       time,
@@ -33,8 +45,9 @@ export const createBooking = async (req, res) => {
       console.log('Slot already booked:', existingBooking);
       return res.status(400).json({ message: 'This slot is already booked' });
     }
-    
+
     const booking = new Booking({ 
+      patientId,
       patientName, 
       doctorId,
       date, 
@@ -45,9 +58,7 @@ export const createBooking = async (req, res) => {
     await booking.save();
     console.log('Booking saved successfully:', booking);
 
-    // Get the io instance from the app
     const io = req.app.get('io');
-    // Emit the slot-updated event to all connected clients
     io.emit('slot-updated', { doctorId, date, time });
 
     res.status(201).json({
@@ -63,6 +74,7 @@ export const createBooking = async (req, res) => {
   }
 };
 
+
 // @desc    Get all bookings
 // @route   GET /api/bookings
 export const getAllBookings = async (req, res) => {
@@ -71,7 +83,7 @@ export const getAllBookings = async (req, res) => {
     res.status(200).json(bookings);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: 'Server Error' });
+    res.status(500).json({ message: "Server Error" });
   }
 };
 
@@ -81,11 +93,21 @@ export const getBookingById = async (req, res) => {
   try {
     const booking = await Booking.findById(req.params.id);
     if (!booking) {
-      return res.status(404).json({ message: 'Booking not found' });
+      return res.status(404).json({ message: "Booking not found" });
     }
     res.status(200).json(booking);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: 'Server Error' });
+    res.status(500).json({ message: "Server Error" });
   }
-}; 
+};
+
+// Remove this code that's causing the error
+// console.log('Creating booking with data:', {
+//   patientId,
+//   patientName,
+//   doctorId,
+//   date,
+//   time,
+//   fullBody: req.body
+// });

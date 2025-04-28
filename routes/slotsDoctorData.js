@@ -128,16 +128,44 @@ router.delete('/:id', async (req, res) => {
 // PUT book a slot
 router.put('/:id/book', async (req, res) => {
   try {
-    const { slot, date, patientName } = req.body;
-    const doctor = await DoctorSlot.findById(req.params.id);
+    // Extract parameters with fallbacks and handle both naming conventions
+    const { slot, time, date, patientName, patientId } = req.body;
+    const doctorId = req.params.id;
+    
+    // Use time if provided, otherwise use slot
+    const timeSlot = time || slot;
+    
+    console.log('Booking request received:', {
+      doctorId,
+      date,
+      timeSlot,
+      patientName,
+      patientId
+    });
+
+    // Validate required fields
+    if (!patientId || !patientName || !date || !timeSlot) {
+      return res.status(400).json({ 
+        message: 'All fields are required',
+        missingFields: {
+          patientId: !patientId,
+          patientName: !patientName,
+          date: !date,
+          timeSlot: !timeSlot
+        }
+      });
+    }
+
+    const doctor = await DoctorSlot.findById(doctorId);
     
     if (!doctor) {
       return res.status(404).json({ message: "Doctor not found" });
     }
 
     // Check if slot is already booked for this date
+    // Handle both slot and time field names in bookedSlots
     const isSlotBooked = doctor.bookedSlots.some(
-      booking => booking.date === date && booking.slot === slot
+      booking => booking.date === date && (booking.slot === timeSlot || booking.time === timeSlot)
     );
 
     if (isSlotBooked) {
@@ -146,29 +174,41 @@ router.put('/:id/book', async (req, res) => {
 
     // Create a new booking record
     const newBooking = new Booking({
+      patientId,
       patientName,
-      doctorId: doctor._id,
+      doctorId,
       date,
-      time: slot,
+      time: timeSlot,
       status: 'confirmed'
     });
+    
+    console.log('Attempting to save booking:', newBooking);
     await newBooking.save();
+    console.log('Booking saved successfully:', newBooking);
 
     // Add to doctor's booked slots
-    doctor.bookedSlots.push({ date, slot });
+    doctor.bookedSlots.push({ 
+      date, 
+      slot: timeSlot, 
+      time: timeSlot,
+      patientName,
+      patientId
+    });
     await doctor.save();
 
     // Get the io instance
     const io = req.app.get('io');
     
     // Emit slot update event
-    io.emit('slot-update', {
-      doctorId: doctor._id,
-      allSlots: doctor.allSlots,
-      bookedSlots: doctor.bookedSlots
-    });
+    if (io) {
+      io.emit('slot-update', {
+        doctorId: doctor._id,
+        allSlots: doctor.allSlots,
+        bookedSlots: doctor.bookedSlots
+      });
+    }
 
-    res.json({
+    res.status(201).json({
       message: 'Booking created successfully',
       booking: newBooking,
       allSlots: doctor.allSlots,
@@ -176,7 +216,10 @@ router.put('/:id/book', async (req, res) => {
     });
   } catch (error) {
     console.error('Booking error:', error);
-    res.status(400).json({ message: error.message });
+    res.status(500).json({ 
+      message: 'Server Error',
+      error: error.message 
+    });
   }
 });
 
@@ -237,3 +280,92 @@ router.get('/:id/queue/:date', async (req, res) => {
 });
 
 export default router;
+
+
+// Book a slot for a doctor
+router.put('/:doctorId/book', async (req, res) => {
+  try {
+    const { doctorId } = req.params;
+    const { date, time, patientName, patientId } = req.body;
+    
+    console.log('Booking request received:', {
+      doctorId,
+      date,
+      time,
+      patientName,
+      patientId
+    });
+
+    // Validate required fields
+    if (!patientId || !patientName || !date || !time) {
+      return res.status(400).json({ 
+        message: 'All fields are required',
+        missingFields: {
+          patientId: !patientId,
+          patientName: !patientName,
+          date: !date,
+          time: !time
+        }
+      });
+    }
+
+    // Find the doctor
+    const doctor = await DoctorSlot.findById(doctorId);
+    if (!doctor) {
+      return res.status(404).json({ message: 'Doctor not found' });
+    }
+
+    // Check if the slot is available
+    const isSlotBooked = doctor.bookedSlots.some(slot => 
+      slot.date === date && slot.time === time && slot.status !== 'cancelled'
+    );
+
+    if (isSlotBooked) {
+      return res.status(400).json({ message: 'This slot is already booked' });
+    }
+
+    // Create a new booking in the Booking model
+    const booking = new Booking({
+      patientId,
+      patientName,
+      doctorId,
+      date,
+      time
+    });
+
+    await booking.save();
+    console.log('Booking saved successfully:', booking);
+
+    // Update the doctor's bookedSlots
+    doctor.bookedSlots.push({
+      date,
+      time,
+      patientName,
+      patientId
+    });
+
+    await doctor.save();
+
+    // Get the io instance
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('slot-updated', { doctorId, date, time });
+    }
+
+    res.status(201).json({
+      message: 'Slot booked successfully',
+      booking,
+      bookedSlots: doctor.bookedSlots
+    });
+  } catch (err) {
+    console.error('Booking error:', err);
+    res.status(500).json({ 
+      message: 'Server Error',
+      error: err.message 
+    });
+  }
+});
+
+// Remove the duplicate route handler at the end of the file
+// The code below should be removed:
+// router.put('/:doctorId/book', async (req, res) => { ... });
