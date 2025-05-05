@@ -7,6 +7,9 @@ import appointmentModel from "../models/appointmentModel.js";
 import { v2 as cloudinary } from 'cloudinary'
 import stripe from "stripe";
 import razorpay from 'razorpay';
+// Add this import at the top
+import visitMemoModel from "../models/visitMemoModel.js";
+import departmentVisitModel from "../models/departmentVisitModel.js";
 
 // Gateway Initialize
 const stripeInstance = new stripe(process.env.STRIPE_SECRET_KEY)
@@ -363,6 +366,8 @@ const verifyStripe = async (req, res) => {
 
 }
 
+
+
 export {
     loginUser,
     registerUser,
@@ -374,5 +379,44 @@ export {
     paymentRazorpay,
     verifyRazorpay,
     paymentStripe,
-    verifyStripe
+    verifyStripe,
 }
+
+// Add this function to your exports
+export const getUserVisitMemos = async (req, res) => {
+    try {
+      const { userId } = req.body;
+      
+      // Find active memos for this user using MongoDB ObjectId
+      const memos = await visitMemoModel.find({
+        patientId: userId,
+        status: "active"
+      })
+      .populate('patientId') // This will populate user details
+      .sort({ createdAt: -1 });
+      
+      // For each memo, get the latest status of each department visit
+      const memosWithStatus = await Promise.all(memos.map(async (memo) => {
+        const memoObj = memo.toObject();
+        
+        // For each department in the memo, get the visit status if it exists
+        for (let i = 0; i < memoObj.departments.length; i++) {
+          const dept = memoObj.departments[i];
+          if (dept.visitId) {
+            const visit = await departmentVisitModel.findById(dept.visitId);
+            if (visit) {
+              memoObj.departments[i].status = visit.status;
+            }
+          }
+        }
+        
+        return memoObj;
+      }));
+      
+      res.json({ success: true, memos: memosWithStatus });
+    } catch (error) {
+      console.log(error);
+      res.json({ success: false, message: error.message });
+    }
+  };
+

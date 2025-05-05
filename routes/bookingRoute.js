@@ -1,5 +1,5 @@
 import express from "express";
-import { createBooking, getAllBookings, getBookingById } from "../controllers/bookingController.js";
+import { createBooking, getAllBookings, getBookingById, updateBookingStatus } from "../controllers/bookingController.js";
 
 const router = express.Router();
 
@@ -11,5 +11,7 @@ router.get('/', getAllBookings);
 
 // Get booking by ID
 router.get('/:id', getBookingById);
+
+router.put("/update/:id", updateBookingStatus); // ✅ change GET to PUT
 
 export default router; 
