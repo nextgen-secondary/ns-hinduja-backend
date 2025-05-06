@@ -2,8 +2,7 @@ import mongoose from "mongoose";
 
 const visitMemoSchema = new mongoose.Schema({
   patientId: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: 'User',
+    type: String,
     required: true 
   },
   patientName: { type: String, required: true },

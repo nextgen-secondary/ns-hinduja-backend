@@ -313,21 +313,14 @@ export const createVisitMemo = async (req, res) => {
       return res.json({ success: false, message: "Patient ID is required" });
     }
     
-    // Verify user exists - try both ObjectId and patientId
-    let user;
-    try {
-      user = await userModel.findById(patientId);
-    } catch (err) {
-      // If error occurs (likely invalid ObjectId format), try finding by patientId
-      user = await userModel.findOne({ patientId: patientId });
-    }
-
+    // Find user by patientId
+    const user = await userModel.findOne({ patientId: patientId });
     if (!user) {
       return res.json({ success: false, message: "User not found" });
     }
     
-    const newMemo = new visitMemoModel({
-      patientId: user._id,
+    let newMemo = new visitMemoModel({
+      patientId: user.patientId,  // Use the patientId string
       patientName: patientName || user.name,
       departments: departments.map(dept => ({
         ...dept,
@@ -359,11 +352,12 @@ export const createVisitMemo = async (req, res) => {
   }
 };
 
+
 export const getUserMemos = async (req, res) => {
   try {
     const { userId } = req.params;
     
-    const memos = await visitMemoModel.find({ patientId: userId }).sort({ createdAt: -1 });
+    const memos = await visitMemoModel.find({ patientId: userId }).populate('patientId', "name email").sort({ createdAt: -1 });
     
     res.json({ success: true, memos });
   } catch (error) {
