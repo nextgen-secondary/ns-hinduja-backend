@@ -121,31 +121,37 @@ export const getDepartmentQueue = async (req, res) => {
   try {
     const departmentId = req.params.id;
     
-    // Get department details
-    const department = await departmentModel.findById(departmentId);
-    if (!department) {
-      return res.json({ success: false, message: "Department not found" });
-    }
+    // Get active memos for this department
+    const activeMemos = await visitMemoModel.find({
+      "departments.departmentId": departmentId,
+      status: "active"
+    }).sort({ "departments.tokenNumber": 1 });
     
-    // Get active visits for this department
-    const activeVisits = await departmentVisitModel.find({
-      departmentId,
-      status: { $in: ["waiting", "in-progress"] }
-    }).sort({ tokenNumber: 1 });
+    // Filter and format queue data
+    const queueEntries = activeMemos
+      .map(memo => {
+        const dept = memo.departments.find(d => d.departmentId === departmentId);
+        if (!dept || !dept.tokenNumber) return null;
+        
+        return {
+          tokenNumber: dept.tokenNumber,
+          patientId: memo.patientId,
+          status: dept.isVisited ? "completed" : "waiting",
+          tests: dept.tests
+        };
+      })
+      .filter(entry => entry !== null);
+    
+    // Sort by token number
+    queueEntries.sort((a, b) => a.tokenNumber - b.tokenNumber);
     
     // Format queue data
     const queueData = {
       departmentId,
-      departmentName: department.name,
-      currentQueueSize: activeVisits.length,
-      averageWaitTime: department.averageWaitTime,
-      estimatedTotalWaitTime: department.averageWaitTime * activeVisits.length,
-      queue: activeVisits.map((visit, index) => ({
+      currentQueueSize: queueEntries.length,
+      queue: queueEntries.map((entry, index) => ({
         position: index + 1,
-        tokenNumber: visit.tokenNumber,
-        patientName: visit.patientName,
-        status: visit.status,
-        waitTime: department.averageWaitTime * index
+        ...entry
       }))
     };
     
@@ -156,16 +162,19 @@ export const getDepartmentQueue = async (req, res) => {
   }
 };
 
-// Update the joinDepartmentQueue function
 export const joinDepartmentQueue = async (req, res) => {
   try {
     const { userId, patientName, memoId } = req.body;
     const departmentId = req.params.id;
     
-    // Get department details
-    const department = await departmentModel.findById(departmentId);
-    if (!department) {
-      return res.json({ success: false, message: "Department not found" });
+    // Find the visit memo
+    const memo = await visitMemoModel.findOne({
+      _id: memoId,
+      "departments.departmentId": departmentId
+    });
+    
+    if (!memo) {
+      return res.json({ success: false, message: "Visit memo or department not found" });
     }
     
     // Get user details
@@ -174,50 +183,22 @@ export const joinDepartmentQueue = async (req, res) => {
       return res.json({ success: false, message: "User not found" });
     }
     
-    // Generate token number
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // Generate token number (based on timestamp to ensure uniqueness)
+    const tokenNumber = Math.floor(Date.now() / 1000);
     
-    const lastVisit = await departmentVisitModel.findOne({
-      departmentId,
-      checkInTime: { $gte: today }
-    }).sort({ tokenNumber: -1 });
-    
-    const tokenNumber = lastVisit ? lastVisit.tokenNumber + 1 : 1;
-    
-    // Create new visit
-    const newVisit = new departmentVisitModel({
-      patientId: user.patientId || userId,
-      patientName: patientName || user.name,
-      departmentId,
-      departmentName: department.name,
-      tokenNumber,
-      estimatedWaitTime: department.averageWaitTime * department.currentQueueSize
-    });
-    
-    await newVisit.save();
-    
-    // Update department queue size
-    await departmentModel.findByIdAndUpdate(
-      departmentId,
-      { $inc: { currentQueueSize: 1 } }
-    );
-    
-    // If memoId is provided, update the visit memo
-    if (memoId) {
-      await visitMemoModel.updateOne(
-        { 
-          _id: memoId,
-          "departments.departmentId": departmentId 
-        },
-        { 
-          $set: { 
-            "departments.$.visitId": newVisit._id,
-            "departments.$.tokenNumber": tokenNumber
-          }
+    // Update the visit memo with token number
+    await visitMemoModel.updateOne(
+      { 
+        _id: memoId,
+        "departments.departmentId": departmentId 
+      },
+      { 
+        $set: { 
+          "departments.$.tokenNumber": tokenNumber,
+          "departments.$.isVisited": false
         }
-      );
-    }
+      }
+    );
     
     // Get the io instance
     const io = req.app.get('io');
@@ -225,14 +206,14 @@ export const joinDepartmentQueue = async (req, res) => {
     // Emit queue update event
     io.emit('queue-updated', {
       departmentId,
-      queueSize: department.currentQueueSize + 1,
-      newVisit
+      memoId,
+      tokenNumber
     });
     
     res.json({ 
       success: true, 
       message: "Successfully joined the queue", 
-      visit: newVisit 
+      tokenNumber 
     });
   } catch (error) {
     console.log(error);
