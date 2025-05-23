@@ -535,3 +535,22 @@ const getDepartmentQueueInfo = async (departmentId) => {
     return null;
   }
 };
+
+export const getAllVisitMemos = async (req, res) => {
+  try {
+    const memos = await visitMemoModel.find()
+      .populate('patientId', 'name email')
+      .sort({ createdAt: -1 });
+    
+    res.json({ 
+      success: true, 
+      memos 
+    });
+  } catch (error) {
+    console.log(error);
+    res.json({ 
+      success: false, 
+      message: error.message 
+    });
+  }
+};

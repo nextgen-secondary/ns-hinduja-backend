@@ -17,7 +17,8 @@ import {
   deleteTest,
   getTestsByDepartment,
   getUserMemos,
-  markMemoAsRead
+  markMemoAsRead,
+  getAllVisitMemos
 } from '../controllers/departmentController.js';
 import authUser from '../middleware/authUser.js';
 import authAdmin from '../middleware/authAdmin.js';
@@ -37,11 +38,13 @@ departmentRouter.post("/:id/join-queue", authUser, joinDepartmentQueue);
 departmentRouter.put("/visit/:visitId/status", updateVisitStatus);
 
 // Visit memo routes
+departmentRouter.get("/visit-memos/all",  getAllVisitMemos);
 departmentRouter.post("/memo/create", authAdmin, createVisitMemo);
 departmentRouter.get("/memo/:id", getVisitMemoById);
 departmentRouter.put("/memo/:id/update", authUser, updateVisitMemo);
 departmentRouter.get("/memo/user/:userId", authUser, getUserMemos);
 departmentRouter.put("/memo/:id/read", authUser, markMemoAsRead);
+departmentRouter.put("/visit-memos/:id", updateVisitMemo); // Add this new route
 
 // Test management routes
 departmentRouter.get("/tests/list", getAllTests);
